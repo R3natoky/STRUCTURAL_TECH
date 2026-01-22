@@ -207,92 +207,74 @@ class VigaRectangular:
             "ratio_seguridad": round(area_real / self.area_acero, 2)
         }
     
-    def distribuir_acero(self, nombre_varilla):
-        """
-        Calcula la disposición de varillas.
-        
-        Raises:
-            ValueError: Si el estado de la viga no permite calcular (As=0) 
-                        o la varilla no existe.
-        
-        Returns:
-            dict: Diccionario estandarizado con estructura:
-                  {
-                      "exito": bool,      # True si cumple criterios constructivos
-                      "mensaje": str,     # Detalle del resultado o error de diseño
-                      "resultado": dict   # Datos técnicos (cantidad, capas, espaciamiento)
-                  }
-        """
-        # --- 1. VALIDACIÓN CON EXCEPTIONS (Errores Fatales) ---
-        # Si esto falla, el programa salta al bloque 'except' inmediatamente.
-        
-        if self.area_acero <= 0:
-            raise ValueError("Estado inválido: El As es 0. Ejecuta calcular_as() antes de distribuir.")
-            
-        if nombre_varilla not in const.VARILLAS_INFO:
-            # Es útil mostrar qué varillas sí son válidas en el error
-            opciones = list(const.VARILLAS_INFO.keys())
-            raise ValueError(f"Varilla '{nombre_varilla}' no encontrada. Opciones: {opciones}")
+    # En analisis_estructural.py
 
-        # --- 2. CÁLCULOS (Lógica de Negocio) ---
+    def distribuir_acero(self, nombre_varilla, area_a_cubrir=None):
+        """
+        Calcula varillas para un área específica.
+        Si area_a_cubrir es None, usa el acero de tracción por defecto.
+        """
+        # 1. Definir qué área estamos calculando
+        target = area_a_cubrir if area_a_cubrir is not None else self.area_acero_traccion
+        
+        # Si no se requiere acero (ej. compresión es 0), retornamos vacío pero con éxito
+        if target <= 0:
+            return {
+                "exito": True, 
+                "mensaje": "No requiere refuerzo", 
+                "resultado": {"cantidad": 0, "capas": 0, "detalle": "Ninguno", "area_real": 0, "varilla": nombre_varilla}
+            }
+
+        # 2. Validaciones básicas
+        if nombre_varilla not in const.VARILLAS_INFO:
+            raise ValueError(f"Varilla {nombre_varilla} no existe")
+
         info_varilla = const.VARILLAS_INFO[nombre_varilla]
         db = info_varilla["diam"]
         area_b = info_varilla["area"]
         
-        # Cantidad matemática
-        num_total = math.ceil(self.area_acero / area_b)
-        
-        # Geometría
+        # 3. Cálculos Geométricos
+        num_total = math.ceil(target / area_b)
         b_disponible = self.base - (2 * const.RECUBRIMIENTO_VIGA) - (2 * const.DIAMETRO_ESTRIBO_DEF)
         separacion_norma = max(const.SEPARACION_MINIMA_CONCRETO, db)
         
-        # Capacidad por capa
-        # Evitamos división por cero si la viga es absurdamene delgada
         ancho_ocupado_por_varilla = db + separacion_norma
-        if ancho_ocupado_por_varilla <= 0:
-             raise ValueError("Error geométrico crítico en dimensiones de varilla/separación.")
-
         max_por_capa = int((b_disponible + separacion_norma) / ancho_ocupado_por_varilla)
 
-        # --- 3. CONSTRUCCIÓN DEL DICCIONARIO ESTANDARIZADO ---
-        # Preparamos la estructura base
+        # 4. Construir Respuesta
         respuesta = {
             "exito": True,
-            "mensaje": "Distribución Conforme",
+            "mensaje": "OK",
             "resultado": {
                 "varilla": nombre_varilla,
                 "cantidad": num_total,
                 "capas": 1,
                 "detalle": "",
-                "area_real": num_total * area_b
+                "area_real": num_total * area_b,
+                "max_por_capa": max_por_capa # Importante para el dibujo
             }
         }
 
-        # Verificaciones de Diseño (No rompen el programa, solo marcan exito=False)
+        # Validaciones de Diseño
         if max_por_capa < 2:
             respuesta["exito"] = False
-            respuesta["mensaje"] = "FALLA: Viga demasiado angosta para esta varilla (b_util insuficiente)."
-            respuesta["resultado"]["cantidad"] = 0
+            respuesta["mensaje"] = "Viga muy angosta"
             return respuesta
 
-        # Lógica de capas
         if num_total <= max_por_capa:
             respuesta["resultado"]["detalle"] = f"1 capa de {num_total}"
         else:
             capa1 = max_por_capa
             capa2 = num_total - max_por_capa
             respuesta["resultado"]["capas"] = 2
-            respuesta["resultado"]["detalle"] = f"2 capas: {capa1} (inf) + {capa2} (sup)"
+            respuesta["resultado"]["detalle"] = f"2 capas: {capa1} + {capa2}"
             
-            # Criterio de fallo por congestión
             if capa2 > max_por_capa:
                 respuesta["exito"] = False
-                respuesta["mensaje"] = "FALLA: Congestión excesiva. Se requieren más de 2 capas."
-            elif num_total > max_por_capa: # Es 2 capas, pero aviso
-                 respuesta["mensaje"] = "ATENCIÓN: Se requieren 2 capas (Diseño aceptable pero no óptimo)."
+                respuesta["mensaje"] = "Congestión: Se requieren >2 capas"
 
         return respuesta
-
+    
 # --- Bloque de Prueba ---
 if __name__ == "__main__":
     viga = VigaRectangular(30, 60, 210, 4200)
