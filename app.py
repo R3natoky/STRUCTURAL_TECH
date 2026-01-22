@@ -97,8 +97,8 @@ def dibujar_viga_completa(viga, d_inf, d_sup):
     # --- C. AJUSTE DE CÁMARA (ZOOM) ---
     # Aumentamos los márgenes negativos para que quepan las cotas
     # Esto hace que la viga se vea más pequeña (efecto "zoom out")
-    ax.set_xlim(-150, B + 50) 
-    ax.set_ylim(-100, H + 50)
+    ax.set_xlim(-250, B + 50) 
+    ax.set_ylim(-200, H + 50)
     ax.set_aspect('equal')
     ax.axis('off') # Sin ejes numéricos feos
     plt.tight_layout()
