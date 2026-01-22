@@ -207,8 +207,6 @@ class VigaRectangular:
             "ratio_seguridad": round(area_real / self.area_acero, 2)
         }
     
-    # En analisis_estructural.py
-
     def distribuir_acero(self, nombre_varilla, area_a_cubrir=None):
         """
         Calcula varillas para un área específica.
@@ -277,32 +275,25 @@ class VigaRectangular:
     
 # --- Bloque de Prueba ---
 if __name__ == "__main__":
+    # Ejemplo: Viga de 30x60, Mu = 24 Ton-m (Suele requerir diseño doble)
     viga = VigaRectangular(30, 60, 210, 4200)
     viga.calcular_as(24)
     
-    print(f"Demanda de Acero: {viga.area_acero:.2f} mm²\n")
+    print(f"RESULTADOS DEL CÁLCULO:")
+    print(f"  Acero Tracción (As): {viga.area_acero_traccion:.2f} mm²")
+    print(f"  Acero Compresión (A's): {viga.area_acero_compresion:.2f} mm²")
+    print(f"  Mensaje: {viga.mensaje}\n")
 
-    # Lista de varillas a probar
-    varillas_a_probar = ["1", "3/4", "5/8"]
-
-    for diametro in varillas_a_probar:
-        print(f"--- Probando varilla {diametro} ---")
-        
-        try:
-            # 1. Intentamos ejecutar la lógica
-            datos = viga.distribuir_acero(diametro)
-            
-            # 2. Verificamos si el diseño fue exitoso o fallido (pero calculado)
-            if datos["exito"]:
-                print(f"✅ APROBADO: {datos['mensaje']}")
-                print(f"   Detalle: {datos['resultado']['detalle']}")
-            else:
-                print(f"⚠️ NO CONFORME: {datos['mensaje']}")
-                print(f"   (Se requerirían {datos['resultado']['cantidad']} varillas)")
-
-        except ValueError as error_fatal:
-            # 3. Capturamos errores de mal uso (Inputs incorrectos)
-            print(f"⛔ ERROR CRÍTICO DE EJECUCIÓN: {error_fatal}")
-        
-        print("") # Salto de linea
+    # Lista de varillas a probar para tracción
+    varilla_diseno = "3/4"
+    print(f"--- Distribución para Tracción ({varilla_diseno}\") ---")
+    
+    try:
+        datos = viga.distribuir_acero(varilla_diseno)
+        if datos["exito"]:
+            print(f"✅ OK: {datos['resultado']['detalle']} ({datos['resultado']['area_real']:.1f} mm² provistos)")
+        else:
+            print(f"⚠️ AVISO: {datos['mensaje']}")
+    except Exception as e:
+        print(f"⛔ ERROR: {e}")
     

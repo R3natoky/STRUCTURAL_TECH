@@ -25,55 +25,58 @@ with st.sidebar:
     var_comp = st.selectbox("Varilla Compresión (Sup)", list(const.VARILLAS_INFO.keys()), index=2) # 5/8
 
 # --- CÁLCULOS ---
-viga = VigaRectangular(b_cm, h_cm, fc, fy)
-viga.calcular_as(mu)
-
-# Distribuir ACERO INFERIOR (Tracción)
 try:
+    viga = VigaRectangular(b_cm, h_cm, fc, fy)
+    viga.calcular_as(mu)
+
+    # Distribuir ACERO INFERIOR (Tracción)
     dist_inf = viga.distribuir_acero(var_trac, viga.area_acero_traccion)
-except ValueError as e:
-    st.error(f"Error Inf: {e}")
-    st.stop()
 
-# Distribuir ACERO SUPERIOR (Compresión) - Solo si es necesario
-dist_sup = None
-if viga.area_acero_compresion > 0:
-    try:
-        dist_sup = viga.distribuir_acero(var_comp, viga.area_acero_compresion)
-    except ValueError as e:
-        st.error(f"Error Sup: {e}")
-
-# --- RESULTADOS ---
-col_res, col_draw = st.columns([1, 1.5])
-
-with col_res:
-    st.subheader("📊 Análisis")
-    if "Doblemente" in viga.mensaje:
-        st.warning(f"Estado: {viga.mensaje}")
-    else:
-        st.success(f"Estado: {viga.mensaje}")
-        
-    st.divider()
-    
-    # Resultados Tracción
-    st.markdown("### 👇 Acero Inferior (Tracción)")
-    st.metric("As Requerido", f"{viga.area_acero_traccion:.2f} mm²")
-    if dist_inf["exito"]:
-        st.info(f"**{dist_inf['resultado']['cantidad']} varillas de {var_trac}\"** ({dist_inf['resultado']['detalle']})")
-    else:
-        st.error(dist_inf["mensaje"])
-
-    # Resultados Compresión
-    st.markdown("### 👆 Acero Superior (Compresión)")
+    # Distribuir ACERO SUPERIOR (Compresión) - Solo si es necesario
+    dist_sup = None
     if viga.area_acero_compresion > 0:
-        st.metric("A's Requerido", f"{viga.area_acero_compresion:.2f} mm²")
-        if dist_sup and dist_sup["exito"]:
-            st.info(f"**{dist_sup['resultado']['cantidad']} varillas de {var_comp}\"**")
-        elif dist_sup:
-            st.error(dist_sup["mensaje"])
-    else:
-        st.caption("No se requiere refuerzo a compresión por cálculo.")
-        st.write("(Se recomienda colocar acero mínimo de montaje, ej. 2 varillas)")
+        dist_sup = viga.distribuir_acero(var_comp, viga.area_acero_compresion)
+
+    # --- RESULTADOS ---
+    col_res, col_draw = st.columns([1, 1.5])
+
+    with col_res:
+        st.subheader("📊 Análisis")
+        if "Doblemente" in viga.mensaje:
+            st.warning(f"Estado: {viga.mensaje}")
+        else:
+            st.success(f"Estado: {viga.mensaje}")
+            
+        st.divider()
+        
+        # Resultados Tracción
+        st.markdown("### 👇 Acero Inferior (Tracción)")
+        st.metric("As Requerido", f"{viga.area_acero_traccion:.2f} mm²")
+        if dist_inf["exito"]:
+            st.info(f"**{dist_inf['resultado']['cantidad']} varillas de {var_trac}\"** ({dist_inf['resultado']['detalle']})")
+        else:
+            st.error(dist_inf["mensaje"])
+
+        # Resultados Compresión
+        st.markdown("### 👆 Acero Superior (Compresión)")
+        if viga.area_acero_compresion > 0:
+            st.metric("A's Requerido", f"{viga.area_acero_compresion:.2f} mm²")
+            if dist_sup and dist_sup["exito"]:
+                st.info(f"**{dist_sup['resultado']['cantidad']} varillas de {var_comp}\"**")
+            elif dist_sup:
+                st.error(dist_sup["mensaje"])
+        else:
+            st.caption("No se requiere refuerzo a compresión por cálculo.")
+            st.write("(Se recomienda colocar acero mínimo de montaje, ej. 2 varillas)")
+
+    with col_draw:
+        st.subheader("🎨 Sección Transversal")
+        fig = dibujar_viga_completa(viga, dist_inf, dist_sup)
+        st.pyplot(fig)
+
+except Exception as e:
+    st.error(f"Se produjo un error en el cálculo: {e}")
+    st.info("Por favor, verifica los datos de entrada (Dimensiones y Momentos).")
 
 # --- DIBUJO ---
 # --- FUNCIÓN DE DIBUJO CORREGIDA ---
