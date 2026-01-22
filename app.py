@@ -76,63 +76,83 @@ with col_res:
         st.write("(Se recomienda colocar acero mínimo de montaje, ej. 2 varillas)")
 
 # --- DIBUJO ---
+# --- FUNCIÓN DE DIBUJO CORREGIDA ---
 def dibujar_viga_completa(viga, d_inf, d_sup):
+    # Creamos la figura
     fig, ax = plt.subplots(figsize=(4, 5))
+    
+    # Datos geométricos
     B, H = viga.base, viga.altura
     rec = const.RECUBRIMIENTO_VIGA
     
-    # 1. Concreto y Estribo
+    # 1. Dibujar Concreto (Rectángulo Principal)
+    # fc='#E0E0E0' es gris claro, ec='black' es borde negro
     ax.add_patch(patches.Rectangle((0, 0), B, H, fc='#E0E0E0', ec='black', lw=2))
+    
+    # 2. Dibujar Estribo (Linea punteada azul)
     w_est = B - 2*rec
     h_est = H - 2*rec
     ax.add_patch(patches.Rectangle((rec, rec), w_est, h_est, fc='none', ec='blue', ls='--', lw=1))
     
-    # Función auxiliar para dibujar fila de varillas
-    def dibujar_fila(cantidad, diametro, y_pos, color):
-        info = const.VARILLAS_INFO[diametro]
+    # Función auxiliar interna para dibujar una fila de círculos
+    def dibujar_fila(cantidad, nombre_varilla, y_pos, color):
+        info = const.VARILLAS_INFO[nombre_varilla]
         db = info["diam"]
-        # Calcular posiciones X centradas
+        
+        # Ancho disponible dentro del estribo
         ancho_util = w_est - 2*const.DIAMETRO_ESTRIBO_DEF
+        
+        # Cálculo de coordenadas X
         if cantidad == 1:
-            xs = [B/2]
+            xs = [B/2] # Si es 1, va al centro
         else:
-            sep = (ancho_util - cantidad*db) / (cantidad - 1)
-            start = rec + const.DIAMETRO_ESTRIBO_DEF + db/2
-            xs = [start + i*(db+sep) for i in range(cantidad)]
+            # Espaciamiento entre centros de varillas
+            sep = (ancho_util - cantidad*db) / (cantidad - 1) if cantidad > 1 else 0
+            # Coordenada de la primera varilla (izquierda)
+            start_x = rec + const.DIAMETRO_ESTRIBO_DEF + db/2
+            # Generamos lista de coordenadas
+            xs = [start_x + i*(db + sep) for i in range(cantidad)]
             
+        # Dibujamos cada círculo
         for x in xs:
             ax.add_patch(patches.Circle((x, y_pos), db/2, fc=color, ec='black'))
 
-    # 2. Dibujar INFERIOR (Rojo)
+    # 3. Dibujar ACERO INFERIOR (Rojo)
     if d_inf and d_inf["resultado"]["cantidad"] > 0:
         cant = d_inf["resultado"]["cantidad"]
-        # Simplificación: si son 2 capas, dibujamos mitad y mitad visualmente
-        capas = d_inf["resultado"]["capas"]
-        db = const.VARILLAS_INFO[d_inf["resultado"]["varilla"]]["diam"]
+        capas = d_inf["resultado"].get("capas", 1)
+        varilla = d_inf["resultado"]["varilla"]
+        db = const.VARILLAS_INFO[varilla]["diam"]
         
+        # Posición Y base (primera capa de abajo hacia arriba)
         y_base = rec + const.DIAMETRO_ESTRIBO_DEF + db/2
         
         if capas == 1:
-            dibujar_fila(cant, d_inf["resultado"]["varilla"], y_base, '#D32F2F')
+            dibujar_fila(cant, varilla, y_base, '#D32F2F') # Rojo
         else:
-            # Dibujo simplificado de 2 capas
+            # Si hay 2 capas, dividimos visualmente
             c1 = d_inf["resultado"].get("max_por_capa", int(cant/2))
             c2 = cant - c1
-            dibujar_fila(c1, d_inf["resultado"]["varilla"], y_base, '#D32F2F')
-            dibujar_fila(c2, d_inf["resultado"]["varilla"], y_base + 30, '#D32F2F') # +30mm arriba
+            dibujar_fila(c1, varilla, y_base, '#D32F2F')
+            dibujar_fila(c2, varilla, y_base + 35, '#D32F2F') # 35mm más arriba
 
-    # 3. Dibujar SUPERIOR (Verde oscuro)
+    # 4. Dibujar ACERO SUPERIOR (Verde)
     if d_sup and d_sup["resultado"]["cantidad"] > 0:
         cant = d_sup["resultado"]["cantidad"]
-        db = const.VARILLAS_INFO[d_sup["resultado"]["varilla"]]["diam"]
-        # Coordenada Y superior: H - rec - estribo - radio
+        varilla = d_sup["resultado"]["varilla"]
+        db = const.VARILLAS_INFO[varilla]["diam"]
+        
+        # Posición Y superior (desde arriba hacia abajo)
         y_top = H - (rec + const.DIAMETRO_ESTRIBO_DEF + db/2)
-        dibujar_fila(cant, d_sup["resultado"]["varilla"], y_top, 'green')
+        
+        dibujar_fila(cant, varilla, y_top, '#2E7D32') # Verde Oscuro
 
+    # --- CORRECCIÓN CRÍTICA ---
+    # Obligamos a matplotlib a mirar la zona donde está la viga
+    ax.set_xlim(-50, B + 50)
+    ax.set_ylim(-50, H + 50)
     ax.set_aspect('equal')
-    ax.axis('off')
+    ax.axis('off') # Ocultamos los números de los ejes
     plt.tight_layout()
+    
     return fig
-
-with col_draw:
-    st.pyplot(dibujar_viga_completa(viga, dist_inf, dist_sup))
