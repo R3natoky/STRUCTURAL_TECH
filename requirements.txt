@@ -2,4 +2,4 @@ pandas
 matplotlib
 ipykernel
 numpy
-streamlit
+streamlit>=1.35.0
