@@ -15,7 +15,7 @@ def dibujar_viga_completa(viga, d_inf, d_sup):
     Dibuja la sección transversal con cotas (dimensiones) estilo plano.
     """
     # Configuración de figura (Tamaño cuadrado para proporción)
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = plt.subplots(figsize=(4, 4))
     
     # Datos geométricos
     B, H = viga.base, viga.altura
