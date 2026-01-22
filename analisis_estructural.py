@@ -11,6 +11,20 @@ class VigaRectangular:
     - Longitudes: Milímetros (mm)
     - Esfuerzos: MegaPascales (MPa)
     """
+# ... dentro de class VigaRectangular ...
+
+    @property
+    def area_acero(self):
+        """
+        Devuelve el acero a tracción por defecto cuando se llama a .area_acero
+        Esto mantiene compatibilidad con código antiguo (como app.py)
+        """
+        return self.area_acero_traccion
+
+    @area_acero.setter
+    def area_acero(self, valor):
+        """Permite asignar valor manualmente si fuera necesario"""
+        self.area_acero_traccion = valor
 
     def __init__(self, base_cm, altura_cm, fc_kg_cm2, fy_kg_cm2):
         """
@@ -24,13 +38,17 @@ class VigaRectangular:
         self.fc = fc_kg_cm2 * const.KG_CM2_A_MPA
         self.fy = fy_kg_cm2 * const.KG_CM2_A_MPA
         
-        # Propiedades calculadas
-        self.area_acero = 0.0
-        self.mensaje = ""
         self._calcular_beta1()
+        
+        # Resultados
+        self.area_acero_traccion = 0.0   # As (Abajo)
+        self.area_acero_compresion = 0.0 # A's (Arriba)
+        self.mensaje = ""
+        
+        # Asumimos recubrimiento superior igual al inferior para d'
+        self.d_prima = const.RECUBRIMIENTO_PROMEDIO 
 
     def _calcular_beta1(self):
-        """Calcula el factor β1 según ACI 318M para el bloque de compresión."""
         if self.fc <= 28.0:
             self.beta1 = 0.85
         elif self.fc >= 55.0:
@@ -40,40 +58,82 @@ class VigaRectangular:
 
     def calcular_as(self, mu_ton_m):
         """
-        Calcula el área de acero requerida para un momento último dado.
-        
-        Args:
-            mu_ton_m: Momento último en Toneladas-metro
+        Calcula el refuerzo considerando diseño simple o doblemente reforzado.
         """
-        # 1. Convertir Momento a N-mm
+        # 1. Preparación de datos
         mu_n_mm = mu_ton_m * const.TON_M_A_N_MM
-        
-        # 2. Definir peralte efectivo (d) estimado
-        # Se asume recubrimiento al centroide de varillas.
         d = self.altura - const.RECUBRIMIENTO_PROMEDIO
-        
-        # 3. Iteración para encontrar 'a' (profundidad bloque compresión) y 'As'
-        # Ecuación: Mu = phi * As * fy * (d - a/2)
-        # Ecuación: a = (As * fy) / (0.85 * fc * b)
-        
-        a = self.altura * 0.1  # Semilla inicial: a = 10% de la altura
         phi = const.PHI_FLEXION
         
-        for _ in range(20): # 20 iteraciones suelen ser suficientes para converger
-            # Despejando As de la ecuación de momento
-            self.area_acero = mu_n_mm / (phi * self.fy * (d - a / 2.0))
-            
-            # Recalculando 'a' con el nuevo As
-            a_nuevo = (self.area_acero * self.fy) / (0.85 * self.fc * self.base)
-            
-            # Criterio de convergencia simple
-            if abs(a_nuevo - a) < 0.01: 
-                a = a_nuevo
-                break
-            a = a_nuevo
+        # 2. Calcular el Límite de la Viga Simplemente Reforzada
+        # Según ACI, el límite dúctil seguro es cuando la deformación del acero es 0.005
+        # Esto ocurre cuando c/d = 0.375
+        c_limite = 0.375 * d
+        a_limite = self.beta1 * c_limite
+        
+        # Capacidad nominal máxima permitida como viga simple (Mn_max)
+        # Fuerza C (concreto) = 0.85 * fc * b * a_limite
+        # Momento = C * (d - a_limite/2)
+        cc_max = 0.85 * self.fc * self.base * a_limite
+        mn_max_simple = cc_max * (d - a_limite / 2)
+        mu_max_simple = phi * mn_max_simple
 
-        # 4. Verificaciones Normativas (ACI 318M - Sistema Métrico)
-        self._verificar_cuantias(d)
+        # 3. TOMA DE DECISIÓN
+        if mu_n_mm <= mu_max_simple:
+            # --- CASO A: DISEÑO SIMPLEMENTE REFORZADO ---
+            self._calcular_simple(mu_n_mm, d, phi)
+            self.mensaje = "Diseño OK (Simplemente Reforzado)"
+        else:
+            # --- CASO B: DISEÑO DOBLEMENTE REFORZADO ---
+            self._calcular_doble(mu_n_mm, d, phi, mn_max_simple, c_limite)
+            self.mensaje = "Diseño OK (Doblemente Reforzado)"
+
+    def _calcular_simple(self, mu, d, phi):
+        """Iteración estándar para vigas simples"""
+        self.area_acero_compresion = 0.0
+        a = d * 0.2 # Semilla
+        for _ in range(20):
+            self.area_acero_traccion = mu / (phi * self.fy * (d - a / 2.0))
+            a_nuevo = (self.area_acero_traccion * self.fy) / (0.85 * self.fc * self.base)
+            if abs(a_nuevo - a) < 0.1: break
+            a = a_nuevo
+        
+        # Verificar mínimo (simplificado)
+        min_as = (0.25 * np.sqrt(self.fc) / self.fy) * self.base * d
+        self.area_acero_traccion = max(self.area_acero_traccion, min_as)
+
+    def _calcular_doble(self, mu, d, phi, mn_max_simple, c_limite):
+        """
+        Lógica para viga doblemente reforzada.
+        Mu_total = Mu_concreto + Mu_acero_compresion
+        """
+        # 1. Determinar el momento "extra" que debe cargar el acero a compresión
+        # Mn_requerido = Mu / phi
+        # Mn_extra = Mn_requerido - Mn_max_concreto
+        mn_requerido = mu / phi
+        mn_extra = mn_requerido - mn_max_simple
+        
+        # 2. Verificar si el acero a compresión fluye (Strain Compatibility)
+        # Triángulo de deformaciones: e_s' / 0.003 = (c - d') / c
+        es_prima = 0.003 * (c_limite - self.d_prima) / c_limite
+        
+        # Esfuerzo en el acero de compresión (fs')
+        fs_prima = es_prima * const.MODULO_ELASTICIDAD_ACERO
+        
+        # No puede ser mayor que fy
+        fs_prima = min(fs_prima, self.fy)
+        
+        # 3. Calcular A's (Acero Compresión)
+        # Mn_extra = A's * fs' * (d - d')
+        self.area_acero_compresion = mn_extra / (fs_prima * (d - self.d_prima))
+        
+        # 4. Calcular As total (Acero Tracción)
+        # As_total = As_max_simple + As_equilibrante_compresion
+        # As_equilibrante * fy = A's * fs'
+        as_max_simple = (0.85 * self.fc * self.base * (self.beta1 * c_limite)) / self.fy
+        as_extra = self.area_acero_compresion * (fs_prima / self.fy)
+        
+        self.area_acero_traccion = as_max_simple + as_extra
 
     def _verificar_cuantias(self, d):
         """Verifica acero mínimo y máximo según ACI 318M."""
